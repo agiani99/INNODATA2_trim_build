@@ -1,6 +1,11 @@
 # INNODATA2_trim_build
 Streamlit apps to trim protacs and rebuild in virtual libraries.
 
+## Optimized Protac_app
+Shredder of Protac smiles. It needs an input CSV file with protac smiles. User needs to decide which two bonds be cut and the app generates the fragments.
+To make user's lief easier unout CSV is divided in 50 rows chunks which are then saved in relative output CSV files
+
+## 
 
 
 ## protac_streamlit_app.py to build a user-defined virtual library of Protacs
