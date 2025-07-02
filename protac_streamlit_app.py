@@ -839,6 +839,8 @@ def main():
             if 'results_df' in st.session_state:
                 original_protacs_df = st.session_state.results_df
                 
+                st.write("Compare your virtual library with original PROTAC compounds in chemical space:")
+                
                 col1, col2 = st.columns(2)
                 with col1:
                     viz_method = st.selectbox(
@@ -851,35 +853,68 @@ def main():
                 with col2:
                     if st.button("🗺️ Generate Chemical Space Plot", type="primary", key="generate_plot_btn"):
                         with st.spinner(f"Generating {viz_method} visualization..."):
-                            fig, plot_message = create_dimensionality_reduction_plot(
-                                virtual_df, 
-                                original_protacs_df, 
-                                virtual_df.iloc[0]['Target_Protein'] if 'Target_Protein' in virtual_df.columns else None,
-                                method=viz_method
-                            )
-                        
-                        if fig:
-                            # Store the plot in session state
-                            st.session_state.plot_fig = fig
-                            st.session_state.plot_message = plot_message
-                            st.session_state.plot_method = viz_method
-                        else:
-                            st.error(plot_message)
+                            try:
+                                fig, plot_message = create_dimensionality_reduction_plot(
+                                    virtual_df, 
+                                    original_protacs_df, 
+                                    virtual_df.iloc[0]['Target_Protein'] if 'Target_Protein' in virtual_df.columns else None,
+                                    method=viz_method
+                                )
+                                
+                                if fig is not None:
+                                    # Store the plot in session state
+                                    st.session_state.plot_fig = fig
+                                    st.session_state.plot_message = plot_message
+                                    st.session_state.plot_method = viz_method
+                                    st.success(plot_message)
+                                else:
+                                    st.error(f"❌ {plot_message}")
+                            except Exception as e:
+                                st.error(f"❌ Error generating plot: {str(e)}")
                 
-                # Display the plot if it exists
+                # Display the plot if it exists in session state
                 if 'plot_fig' in st.session_state and st.session_state.plot_fig is not None:
-                    st.success(st.session_state.plot_message)
+                    st.markdown("---")
+                    st.subheader(f"📊 {st.session_state.get('plot_method', 'Chemical Space')} Visualization")
+                    
+                    # Display the plot
                     st.plotly_chart(st.session_state.plot_fig, use_container_width=True)
                     
+                    # Add interpretation guide
                     st.markdown("""
-                    **Plot Interpretation:**
-                    - 🔵 **Light Blue Dots**: Virtual library compounds
-                    - 🔴 **Red Diamonds**: Original PROTAC compounds  
-                    - **Proximity**: Closer points have similar molecular properties
-                    - **Clusters**: Groups of compounds with similar characteristics
+                    **📋 Plot Interpretation Guide:**
+                    - 🔵 **Light Blue Circles**: Virtual library compounds (generated candidates)
+                    - 🔴 **Red Diamonds**: Original PROTAC compounds (from your dataset)
+                    - **Proximity**: Points close together have similar molecular properties
+                    - **Clusters**: Groups of compounds with similar chemical characteristics
+                    - **Outliers**: Isolated points represent compounds with unique properties
+                    
+                    **💡 Tips for Analysis:**
+                    - Virtual compounds near red diamonds are similar to known PROTACs
+                    - Virtual compounds in empty regions explore new chemical space
+                    - Hover over points to see compound details and similarity scores
                     """)
+                    
+                    # Option to clear the plot
+                    if st.button("🗑️ Clear Plot", key="clear_plot_btn"):
+                        if 'plot_fig' in st.session_state:
+                            del st.session_state.plot_fig
+                        if 'plot_message' in st.session_state:
+                            del st.session_state.plot_message
+                        if 'plot_method' in st.session_state:
+                            del st.session_state.plot_method
+                        st.rerun()
+            
             else:
-                st.info("💡 Process compounds in the 'PROTAC Reconstruction' tab first to enable chemical space visualization")
+                st.info("💡 **To enable Chemical Space Visualization:** Process compounds in the 'PROTAC Reconstruction' tab first to create reference data for comparison.")
+                st.markdown("""
+                **What you'll get with Chemical Space Visualization:**
+                - Interactive t-SNE or UMAP plots
+                - Virtual library compounds vs original PROTACs
+                - Molecular property-based clustering
+                - Exploration of chemical space coverage
+                """)
+
             
             # Property Distribution Analysis
             st.subheader("📈 Property Distribution Analysis")
