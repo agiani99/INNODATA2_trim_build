@@ -8,7 +8,7 @@ where warhards or E3binders lay (see below)
 
 ## batch protac mapper.py
 This script takes all chunks generated above and tries to identify the class (Warhead or E3binder) of fragments 1 and 3 to generated a mapped CSV file with a 
-clever concatenation in one big files to be used in the builder app below.
+clever concatenation in one big files to be used in the builder app below. i uses evo_ecbd_von16.csv as reference and MACSS keys for 
 
 ## protac_streamlit_app.py to build a user-defined virtual library of Protacs
 
