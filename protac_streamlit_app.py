@@ -297,17 +297,54 @@ def create_dimensionality_reduction_plot(virtual_df, original_protacs_df, target
         scaler = StandardScaler()
         all_props_scaled = scaler.fit_transform(all_props)
         
+        # Check minimum sample size
+        min_samples = len(all_props_scaled)
+        if min_samples < 5:
+            return None, f"Need at least 5 data points for visualization, got {min_samples}"
+        
         # Apply dimensionality reduction
         if method.lower() == 't-sne':
-            reducer = TSNE(n_components=2, random_state=42, perplexity=min(30, len(all_props_scaled)//4))
+            # Adjust perplexity based on data size
+            perplexity = min(30, max(5, min_samples // 4))
+            reducer = TSNE(n_components=2, random_state=42, perplexity=perplexity, max_iter=1000)
             embedding = reducer.fit_transform(all_props_scaled)
         else:  # UMAP
             try:
-                from umap import UMAP
-                reducer = UMAP(n_components=2, random_state=42, n_neighbors=min(15, len(all_props_scaled)//3))
+                # Try importing UMAP with better error handling
+                try:
+                    import umap
+                    reducer_class = umap.UMAP
+                except ImportError:
+                    try:
+                        from umap import UMAP
+                        reducer_class = UMAP
+                    except ImportError:
+                        try:
+                            import umap.umap_ as umap
+                            reducer_class = umap.UMAP
+                        except ImportError:
+                            return None, "UMAP not installed. Please install with: pip install umap-learn"
+                
+                # Adjust parameters based on data size
+                n_neighbors = min(15, max(2, min_samples // 3))
+                min_dist = 0.1
+                
+                reducer = reducer_class(
+                    n_components=2, 
+                    random_state=42, 
+                    n_neighbors=n_neighbors,
+                    min_dist=min_dist,
+                    metric='euclidean'
+                )
                 embedding = reducer.fit_transform(all_props_scaled)
-            except ImportError:
-                return None, "UMAP not installed. Please install with: pip install umap-learn"
+                
+            except Exception as umap_error:
+                # Fallback to t-SNE if UMAP fails
+                st.warning(f"UMAP failed ({str(umap_error)}), falling back to t-SNE")
+                perplexity = min(30, max(5, min_samples // 4))
+                reducer = TSNE(n_components=2, random_state=42, perplexity=perplexity, max_iter=1000)
+                embedding = reducer.fit_transform(all_props_scaled)
+                method = 't-SNE (fallback)'
         
         # Create interactive plot
         fig = go.Figure()
@@ -408,8 +445,9 @@ def generate_virtual_library(df, fragment_cols, target_compound_idx, max_library
     
     st.info(f"Total possible combinations: {len(combinations)}")
     
-    # If we have more combinations than max size, we'll sample all and then select top similar ones
+    # Track successful and failed combinations
     results = []
+    failed_combinations = []
     
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -420,7 +458,7 @@ def generate_virtual_library(df, fragment_cols, target_compound_idx, max_library
         status_text.text(f'Generating virtual compound {idx + 1} of {len(combinations)}...')
         
         try:
-            # Build PROTAC
+            # Build PROTAC - CONTINUE EVEN IF ONE FAILS
             protac_mol, message = build_protac_from_fragments(e3binder, linker, warhead)
             
             if protac_mol:
@@ -442,15 +480,57 @@ def generate_virtual_library(df, fragment_cols, target_compound_idx, max_library
                 }
                 
                 results.append(result)
+            else:
+                # Log the failure but CONTINUE enumeration
+                failed_combinations.append({
+                    'Virtual_ID': idx,
+                    'E3binder_SMILES': e3binder,
+                    'Linker_SMILES': linker,
+                    'Warhead_SMILES': warhead,
+                    'Failure_Reason': message
+                })
         
         except Exception as e:
-            continue  # Skip failed combinations
+            # Log the exception but CONTINUE enumeration
+            failed_combinations.append({
+                'Virtual_ID': idx,
+                'E3binder_SMILES': e3binder,
+                'Linker_SMILES': linker,
+                'Warhead_SMILES': warhead,
+                'Failure_Reason': f"Exception: {str(e)}"
+            })
     
     progress_bar.empty()
     status_text.empty()
     
     if not results:
-        return None, "No valid virtual compounds generated"
+        return None, f"No valid virtual compounds generated from {len(combinations)} combinations. All failed due to connection issues."
+    
+    # Report success/failure statistics
+    success_rate = len(results) / len(combinations) * 100
+    st.success(f"✅ Successfully generated {len(results)} compounds from {len(combinations)} combinations ({success_rate:.1f}% success rate)")
+    
+    if failed_combinations:
+        st.warning(f"⚠️ {len(failed_combinations)} combinations failed due to connection issues but enumeration continued")
+        
+        # Option to download failed combinations for analysis
+        if st.checkbox("Show failed combinations details", key="show_failures"):
+            st.subheader("Failed Combinations Analysis")
+            failed_df = pd.DataFrame(failed_combinations)
+            st.dataframe(failed_df.head(20))  # Show first 20 failures
+            
+            # Download failed combinations
+            csv_buffer = io.StringIO()
+            failed_df.to_csv(csv_buffer, index=False)
+            csv_data = csv_buffer.getvalue()
+            
+            st.download_button(
+                label="📥 Download Failed Combinations CSV",
+                data=csv_data,
+                file_name=f"failed_combinations_target_{target_protein or 'unknown'}.csv",
+                mime="text/csv",
+                key="download_failures"
+            )
     
     # Convert to DataFrame and sort by similarity
     results_df = pd.DataFrame(results)
@@ -459,8 +539,9 @@ def generate_virtual_library(df, fragment_cols, target_compound_idx, max_library
     # Select top compounds up to max_library_size
     if len(results_df) > max_library_size:
         results_df = results_df.head(max_library_size)
+        st.info(f"📊 Showing top {max_library_size} most similar compounds out of {len(results)} successful combinations")
     
-    return results_df, f"Generated {len(results_df)} virtual compounds"
+    return results_df, f"Generated {len(results_df)} virtual compounds (from {len(results)} successful out of {len(combinations)} total combinations)"
 
 def process_csv_data(df, fragment_cols):
     """Process the uploaded CSV data and reconstruct PROTACs"""
