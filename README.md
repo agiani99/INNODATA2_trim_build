@@ -38,3 +38,10 @@ Reduces candidate explosion: Instead of 34,314 candidates, you'll get target-rel
 Maintains chemical relevance: Only combines fragments known to work for the same target
 Explores linker diversity: Still allows exploration of different linkers across all PROTACs
 Handles edge cases: Works for both high-frequency targets (ER) and low-frequency ones (AKT1)
+
+## protac_conformer_hbond_app.py
+
+This app allows user to upload virtual library designed and after calculations of special mean descriptors on 
+50 conformers of each virtual compound, to predict pDC50 of the virtual Protac for ranking. It check also for multiprocessing
+for batch calculations. Roughly 33mins for 100 compounds.
+
